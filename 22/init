@@ -1,0 +1,143 @@
+#!/bin/bash
+
+FILE_HIST=".init_mem"
+MSG_USAGE="Usage: ./init.sh <day> \"<project name>\""
+TMPL_ROOTDIR="d%02d_%s"
+PTRN_INPUT="^[0]?[1-9]+[0]? [A-Za-z ]+$"
+
+if [[ ! "$#" -eq 2 ]]; then
+	echo -e "Error: Invalid number of arguments.\n$MSG_USAGE"
+	exit 1
+elif [[ ! "${@//\"/}" =~ $PTRN_INPUT ]]; then	
+	echo -e "Error: Improper arguments provided.\n$MSG_USAGE"
+	exit 1
+elif grep -q "^$[0]*$1$" "$FILE_HIST"; then
+	echo "Error: Challenge for the day is already solved."  
+   	exit 1
+fi
+
+generate_root_directory_name() {
+	local day="$1"
+	local proj_name="$2"
+	shopt -s extglob
+	# remove leading spaces
+	local proj_name=${proj_name##*( )}
+	# remove trailing spaces
+	local proj_name=${proj_name%%*( )}
+	local proj_name=$(echo "${proj_name}" | tr '[:upper:]' '[:lower:]' | tr -s ' ' '_')
+	local rootDir=$(printf "$TMPL_ROOTDIR" "$day" "$proj_name")
+	shopt -u extglob
+	echo "$rootDir"
+}
+
+create_project_structure(){
+	if [ -z "$1" ]; then
+		echo "Error: Expected input not provided. (root directory)"
+	  	return 1
+	fi
+	if [ -d $1 ]; then
+	  	echo "Error: Directory '${1}' already exists. Aborting."
+	  	exit 1
+	else
+	  	mkdir "$1"	  
+	  	mkdir $1/{src,tests,resources,utils}
+		touch $1/src/"__init__.py"
+		touch $1/tests/"__init__.py"
+		touch $1/utils/"__init__.py"
+		touch $1/resources/"input.txt"
+		touch $1/resources/"input_test.txt"
+	fi
+}
+
+create_file_main(){
+	if [ -z "$1" ]; then
+		echo "Error: Expected input not provided. (root directory)"
+	  	return 1
+	fi
+	local FILE_PATH="${1}/main.py"
+    	touch "$FILE_PATH" 
+	echo "from src import task1" >> "$FILE_PATH"
+	echo "from src import task2" >> "$FILE_PATH"
+	echo "from tests import test_task1" >> "$FILE_PATH"
+	echo "from tests import test_task2" >> "$FILE_PATH"
+	echo -e "from utils import utils\n" >> "$FILE_PATH"
+	addHelloFunction $FILE_PATH
+	echo "if __name__ == '__main__':" >> "$FILE_PATH"
+   	echo "	hello()" >> "$FILE_PATH"
+   	echo "	task1.hello()" >> "$FILE_PATH"
+   	echo "	task2.hello()" >> "$FILE_PATH"
+   	echo "	test_task1.hello()" >> "$FILE_PATH"
+   	echo "	test_task2.hello()" >> "$FILE_PATH"
+   	echo "	utils.hello()" >> "$FILE_PATH"
+}
+
+addHelloFunction(){
+	if [ -z "$1" ]; then
+    	echo "Error: Expected input not provided. (file path)"
+        return 1
+	elif [[ ! -e "$1" ]]; then
+		echo "Error: The file \"${1}\" does not exist."	
+	fi
+	echo "def hello():" >> "$1"
+	echo '	print("Hello from: ", __file__)' >> "$1"
+}
+
+create_src_files(){
+	if [ -z "$1" ]; then
+		echo "Error: Expected input not provided. (root directory)"
+		return 1
+	elif [[ ! -d $1 ]]; then
+		echo "Error: The directory \"${1}\" does not exist." 
+		return 1
+	fi	
+	local FILES=("task1" "task2")
+	for item in "${FILES[@]}"; do
+		local file="$1/src/${item}.py"
+		touch "$file"
+		echo -e "from utils import utils\n" >> "$file"	
+		addHelloFunction $file		
+		create_test_file $1 $item
+	done
+	local FILE_UTILS="$1/utils/utils.py" 
+	touch "$FILE_UTILS"
+	addHelloFunction $FILE_UTILS
+}
+
+create_test_file(){
+	if [ -z "$1" ]; then
+		echo "Error: Expected input not provided. (root directory)"
+		return 1
+	elif [ -r "$2" ]; then
+		echo "Error: Expected input not provided. (source file name)"
+		return 1
+	elif [[ ! -d $1/tests ]]; then
+		echo "Error: The directory \"${1}/tests\" does not exist." 
+		return 1
+	fi
+	local file="$1/tests/test_${2}.py"
+	touch "$file"
+	echo -e "from utils import utils" >> "$file"
+	echo -e "from src import ${2}\n" >> "$file"
+	addHelloFunction $file
+}
+
+abort(){
+	sed -i '$d' "$FILE_HIST" && rm -r "$rootDir"
+}
+
+if [ ! -e "$FILE_HIST" ]; then
+	touch "$FILE_HIST";
+fi
+
+unset $rootDir
+rootDir=$(generate_root_directory_name "$1" "$2")
+echo "Project root directory: $rootDir"
+create_project_structure $rootDir
+create_file_main $rootDir
+create_src_files $rootDir
+
+#ls -1R $rootDir
+tree $rootDir
+python $rootDir/main.py
+echo "Project structure initialized successfully!"
+echo "$(printf "%02d" "$1")"  >> "$FILE_HIST"
